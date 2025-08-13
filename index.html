@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Gridworld Q‑Learning Demo</title>
+  <style>
+    :root {
+      --bg: #0f1115;
+      --panel: #151922;
+      --accent: #6ee7ff;
+      --accent-2: #a78bfa;
+      --text: #e5e7eb;
+      --muted: #9aa4b2;
+      --good: #22c55e;
+      --bad: #ef4444;
+      --wall: #2b3445;
+      --grid: #202636;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Noto Sans, Arial, "Apple Color Emoji", "Segoe UI Emoji"; }
+    header { padding: 14px 18px; border-bottom: 1px solid #1f2433; display: flex; align-items: center; gap: 12px; }
+    header h1 { margin: 0; font-size: 18px; font-weight: 700; letter-spacing: .2px; }
+    header .sub { color: var(--muted); font-size: 12px; }
+
+    .wrap { display: grid; grid-template-columns: 360px 1fr; min-height: calc(100dvh - 56px); }
+    aside { padding: 14px; background: var(--panel); border-right: 1px solid #1f2433; overflow: auto; }
+    main { padding: 16px; }
+
+    .group { background: #0f1320; border: 1px solid #1f2433; border-radius: 14px; padding: 12px; margin-bottom: 12px; }
+    .group h3 { margin: 0 0 8px; font-size: 13px; color: var(--accent); font-weight: 700; letter-spacing: .3px; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .row3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    label { display: grid; gap: 6px; font-size: 12px; color: var(--muted); }
+    input[type="number"], input[type="range"], select { width: 100%; background: #0c101a; color: var(--text); border: 1px solid #1f2433; border-radius: 10px; padding: 8px 10px; outline: none; }
+    input[type="range"] { padding: 0; height: 28px; }
+
+    .btns { display: flex; flex-wrap: wrap; gap: 8px; }
+    button { background: #13192a; color: var(--text); border: 1px solid #273148; padding: 8px 10px; border-radius: 10px; font-size: 13px; cursor: pointer; transition: transform .05s ease; }
+    button:hover { border-color: #3b4a6c; }
+    button:active { transform: translateY(1px); }
+    .pri { background: linear-gradient(135deg, #1f3b7a, #33466e); border-color: #3a5bbd55; }
+    .good { background: #13301f; border-color: #1f5135; }
+    .bad  { background: #3a1217; border-color: #6b1f28; }
+
+    .canvas-wrap { display: grid; grid-template-columns: 1fr 240px; gap: 16px; }
+    canvas { background: #0b0f18; border: 1px solid #1f2433; border-radius: 14px; width: 100%; height: auto; image-rendering: pixelated; }
+
+    .legend { background: #0f1320; border: 1px solid #1f2433; border-radius: 14px; padding: 12px; height: fit-content; }
+    .legend h4 { margin: 0 0 8px; font-size: 13px; color: var(--accent-2); }
+    .legend .item { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); margin: 6px 0; }
+    .dot { width: 14px; height: 14px; border-radius: 999px; border: 1px solid #1f2433; }
+    .dot.agent { background: #f59e0b; }
+    .dot.goal { background: #16a34a; }
+    .dot.start { background: #2563eb; }
+    .sq { width: 14px; height: 14px; border-radius: 4px; border: 1px solid #1f2433; }
+    .sq.wall { background: var(--wall); }
+
+    .stats { margin-top: 8px; font-size: 12px; color: var(--muted); line-height: 1.5; }
+
+    .toggle { display: flex; gap: 8px; align-items: center; }
+    .toggle input { margin: 0; }
+
+    .note { color: var(--muted); font-size: 12px; margin-top: 6px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Gridworld Q‑Learning</h1>
+    <span class="sub">한 칸 이동 시 비용(step cost)을 주고, 목표에 빠르게 도달하도록 학습</span>
+  </header>
+
+  <div class="wrap">
+    <aside>
+      <div class="group">
+        <h3>환경 설정</h3>
+        <div class="row">
+          <label>세로(H)
+            <input id="h" type="number" min="2" max="40" value="10">
+          </label>
+          <label>가로(W)
+            <input id="w" type="number" min="2" max="40" value="10">
+          </label>
+        </div>
+        <div class="toggle" style="margin-top:8px">
+          <input id="snapGrid" type="checkbox" checked>
+          <label for="snapGrid">캔버스 클릭으로 벽/시작/목표 편집</label>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <label>편집 모드
+            <select id="editMode">
+              <option value="wall">벽 그리기/지우기(좌클릭)</option>
+              <option value="start">시작 변경(Shift+클릭 또는 선택)</option>
+              <option value="goal">목표 변경(Alt+클릭 또는 선택)</option>
+            </select>
+          </label>
+          <label>셀 크기(px)
+            <input id="cellSize" type="number" min="12" max="64" value="48">
+          </label>
+        </div>
+        <div class="btns" style="margin-top:10px">
+          <button id="clearWalls">벽 모두 지우기</button>
+          <button id="randomWalls">랜덤 벽</button>
+        </div>
+        <div class="note">Tip: 좌클릭=벽 토글, Shift+클릭=시작, Alt+클릭=목표</div>
+      </div>
+
+      <div class="group">
+        <h3>학습 하이퍼파라미터</h3>
+        <div class="row3">
+          <label>α(alpha)
+            <input id="alpha" type="number" step="0.01" min="0" max="1" value="0.1">
+          </label>
+          <label>γ(gamma)
+            <input id="gamma" type="number" step="0.01" min="0" max="0.999" value="0.99">
+          </label>
+          <label>ε(epsilon)
+            <input id="eps" type="number" step="0.01" min="0" max="1" value="1.0">
+          </label>
+        </div>
+        <div class="row3" style="margin-top:8px">
+          <label>ε 최소
+            <input id="epsMin" type="number" step="0.01" min="0" max="1" value="0.05">
+          </label>
+          <label>ε 감쇠(decay)
+            <input id="epsDecay" type="number" step="0.001" min="0.5" max="0.999" value="0.995">
+          </label>
+          <label>에피소드 최대 스텝
+            <input id="maxSteps" type="number" min="10" max="2000" value="200">
+          </label>
+        </div>
+      </div>
+
+      <div class="group">
+        <h3>보상 설계</h3>
+        <div class="row">
+          <label>이동 비용(step cost)
+            <input id="stepCost" type="number" step="0.1" value="-1">
+          </label>
+          <label>목표 보상(goal)
+            <input id="goalReward" type="number" step="1" value="20">
+          </label>
+        </div>
+      </div>
+
+      <div class="group">
+        <h3>시뮬레이션</h3>
+        <label>학습 속도 (프레임당 스텝 수)
+          <input id="speed" type="range" min="1" max="400" value="60">
+        </label>
+        <div class="toggle" style="margin-top:8px">
+          <input id="showPolicy" type="checkbox" checked>
+          <label for="showPolicy">최적 정책 화살표 표시</label>
+        </div>
+        <div class="toggle" style="margin-top:8px">
+          <input id="showQ" type="checkbox">
+          <label for="showQ">Q값 열지도(삼각형) 표시</label>
+        </div>
+        <div class="btns" style="margin-top:10px">
+          <button id="toggleTrain" class="pri">▶ 시작</button>
+          <button id="stepEpisode">한 에피소드 학습</button>
+          <button id="runGreedy" class="good">최적 정책 시연</button>
+          <button id="resetQ" class="bad">Q 초기화</button>
+        </div>
+        <div class="stats" id="stats"></div>
+      </div>
+    </aside>
+
+    <main>
+      <div class="canvas-wrap">
+        <canvas id="cv" width="768" height="768"></canvas>
+        <div class="legend">
+          <h4>범례</h4>
+          <div class="item"><span class="sq wall"></span> 벽(Wall)</div>
+          <div class="item"><span class="dot start"></span> 시작(Start)</div>
+          <div class="item"><span class="dot goal"></span> 목표(Goal)</div>
+          <div class="item"><span class="dot agent"></span> 에이전트(Agent)</div>
+          <div class="item">Q 열지도: 각 칸의 4개 방향을 삼각형으로 채색 (밝을수록 Q↑)</div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    // ====== 상태 ======
+    const ACTIONS = [ [-1,0], [1,0], [0,-1], [0,1] ]; // 상,하,좌,우
+    const ARROWS = ["↑","↓","←","→"];
+
+    const el = id => document.getElementById(id);
+
+    const state = {
+      H: parseInt(el('h').value, 10),
+      W: parseInt(el('w').value, 10),
+      cell: parseInt(el('cellSize').value, 10),
+      start: {y:0,x:0},
+      goal:  {y:9,x:9},
+      walls: new Set(), // key: "y,x"
+      Q: null, // Float32Array[H*W*4]
+      s: {y:0,x:0}, // 현재 위치
+      eps: parseFloat(el('eps').value),
+      alpha: parseFloat(el('alpha').value),
+      gamma: parseFloat(el('gamma').value),
+      epsMin: parseFloat(el('epsMin').value),
+      epsDecay: parseFloat(el('epsDecay').value),
+      stepCost: parseFloat(el('stepCost').value),
+      goalReward: parseFloat(el('goalReward').value),
+      maxSteps: parseInt(el('maxSteps').value, 10),
+      training: false,
+      stepsPerFrame: parseInt(el('speed').value, 10),
+      ep: 0,
+      epReturn: 0,
+      lastEpisodeSteps: 0,
+      avgReturn: 0,
+      avgLen: 0,
+      runningAvgN: 100,
+    };
+
+    // ====== 유틸 ======
+    const key = (y,x) => `${y},${x}`;
+    const idx = (y,x,a) => ((y*state.W + x) * 4 + a);
+
+    function resetQ() {
+      state.Q = new Float32Array(state.H*state.W*4);
+    }
+
+    function clamp(v, lo, hi){ return Math.max(lo, Math.min(hi, v)); }
+
+    function inBounds(y,x){ return y>=0 && y<state.H && x>=0 && x<state.W; }
+
+    function isWall(y,x){ return state.walls.has(key(y,x)); }
+
+    function setGrid(h,w) {
+      state.H = h; state.W = w;
+      // 목표/시작을 그리드 안으로 보정
+      state.start.y = clamp(state.start.y, 0, h-1);
+      state.start.x = clamp(state.start.x, 0, w-1);
+      state.goal.y  = clamp(state.goal.y , 0, h-1);
+      state.goal.x  = clamp(state.goal.x , 0, w-1);
+      // 벽도 보정
+      const newWalls = new Set();
+      for (const k of state.walls){
+        const [y,x] = k.split(',').map(Number);
+        if (y<h && x<w) newWalls.add(k);
+      }
+      state.walls = newWalls;
+      resetQ();
+      resetEpisode();
+      draw();
+    }
+
+    function resetEpisode(){
+      state.s = {y: state.start.y, x: state.start.x};
+      state.epReturn = 0;
+      state.lastEpisodeSteps = 0;
+    }
+
+    // ====== 환경 동역학 ======
+    function stepEnv(s, a){
+      const [dy, dx] = ACTIONS[a];
+      let ny = s.y + dy, nx = s.x + dx;
+      if (!inBounds(ny,nx) || isWall(ny,nx)) { ny = s.y; nx = s.x; }
+      let reward = state.stepCost;
+      let done = false;
+      if (ny === state.goal.y && nx === state.goal.x){
+        reward = state.goalReward;
+        done = true;
+      }
+      return [{y:ny,x:nx}, reward, done];
+    }
+
+    // ====== 정책 & 학습 ======
+    function bestAction(y,x){
+      let bestA = 0, bestQ = -Infinity;
+      for (let a=0;a<4;a++){
+        const q = state.Q[idx(y,x,a)];
+        if (q>bestQ){ bestQ=q; bestA=a; }
+      }
+      return bestA;
+    }
+
+    function epsilonGreedy(y,x){
+      if (Math.random() < state.eps) return (Math.random()*4)|0;
+      return bestAction(y,x);
+    }
+
+    function qLearnStep(){
+      const y = state.s.y, x = state.s.x;
+      const a = epsilonGreedy(y,x);
+      const [ns, r, done] = stepEnv(state.s, a);
+      // TD 업데이트
+      let maxNext = -Infinity;
+      for (let na=0;na<4;na++){
+        const qn = state.Q[idx(ns.y,ns.x,na)];
+        if (qn>maxNext) maxNext = qn;
+      }
+      const qsaIdx = idx(y,x,a);
+      const tdTarget = r + state.gamma * (done ? 0 : maxNext);
+      const tdError  = tdTarget - state.Q[qsaIdx];
+      state.Q[qsaIdx] += state.alpha * tdError;
+
+      state.s = ns;
+      state.epReturn += r;
+      state.lastEpisodeSteps++;
+
+      if (done || state.lastEpisodeSteps >= state.maxSteps){
+        // 에피소드 종료 처리
+        state.ep++;
+        const n = Math.min(state.ep, state.runningAvgN);
+        state.avgReturn = ((state.avgReturn*(n-1)) + state.epReturn) / n;
+        state.avgLen    = ((state.avgLen*(n-1)) + state.lastEpisodeSteps) / n;
+
+        state.eps = Math.max(state.eps * state.epsDecay, state.epsMin);
+        resetEpisode();
+      }
+    }
+
+    // ====== 캔버스 렌더링 ======
+    const cv = el('cv');
+    const ctx = cv.getContext('2d');
+
+    function drawGrid(){
+      const cs = state.cell;
+      const w = state.W * cs;
+      const h = state.H * cs;
+      // 캔버스 리사이즈 (픽셀 밀도 고려)
+      const dpr = window.devicePixelRatio || 1;
+      cv.width = Math.round(w * dpr);
+      cv.height= Math.round(h * dpr);
+      cv.style.width = w + 'px';
+      cv.style.height= h + 'px';
+      ctx.setTransform(dpr,0,0,dpr,0,0);
+
+      // 배경
+      ctx.fillStyle = '#0b0f18';
+      ctx.fillRect(0,0,w,h);
+
+      // 셀 배경 (미세 톤)
+      for (let y=0;y<state.H;y++){
+        for (let x=0;x<state.W;x++){
+          const px = x*cs, py=y*cs;
+          ctx.fillStyle = ( (x+y)&1 )? '#0b111e' : '#0d1220';
+          ctx.fillRect(px,py,cs,cs);
+        }
+      }
+
+      // 벽
+      ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--wall');
+      for (const k of state.walls){
+        const [y,x] = k.split(',').map(Number);
+        ctx.fillRect(x*cs, y*cs, cs, cs);
+      }
+
+      // 목표, 시작
+      drawRoundedCell(state.goal.y, state.goal.x, cs, '#16a34a');
+      drawRoundedCell(state.start.y, state.start.x, cs, '#2563eb');
+
+      // Q heat (옵션)
+      if (el('showQ').checked) {
+        drawQHeatmap();
+      }
+
+      // 정책 화살표(옵션)
+      if (el('showPolicy').checked) {
+        drawPolicyArrows();
+      }
+
+      // 에이전트
+      drawAgent(state.s.y, state.s.x, cs);
+
+      // 그리드 선
+      ctx.strokeStyle = '#202636';
+      ctx.lineWidth = 1;
+      for (let i=0;i<=state.W;i++){
+        const x = i*cs; ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke();
+      }
+      for (let i=0;i<=state.H;i++){
+        const y = i*cs; ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke();
+      }
+    }
+
+    function drawRoundedCell(y,x,cs,color){
+      const r = Math.max(6, Math.floor(cs*0.18));
+      const px = x*cs, py = y*cs;
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(px+r, py);
+      ctx.lineTo(px+cs-r, py);
+      ctx.quadraticCurveTo(px+cs, py, px+cs, py+r);
+      ctx.lineTo(px+cs, py+cs-r);
+      ctx.quadraticCurveTo(px+cs, py+cs, px+cs-r, py+cs);
+      ctx.lineTo(px+r, py+cs);
+      ctx.quadraticCurveTo(px, py+cs, px, py+cs-r);
+      ctx.lineTo(px, py+r);
+      ctx.quadraticCurveTo(px, py, px+r, py);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    function drawAgent(y,x,cs){
+      const px = x*cs + cs/2, py = y*cs + cs/2;
+      const r = Math.max(6, cs*0.28);
+      ctx.fillStyle = '#f59e0b';
+      ctx.beginPath();
+      ctx.arc(px,py,r,0,Math.PI*2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,.25)';
+      ctx.lineWidth = 2; ctx.stroke();
+    }
+
+    function drawPolicyArrows(){
+      const cs = state.cell; ctx.fillStyle = '#cbd5e1'; ctx.strokeStyle = '#94a3b8';
+      ctx.lineWidth = 1.2;
+      for (let y=0;y<state.H;y++){
+        for (let x=0;x<state.W;x++){
+          if (isWall(y,x)) continue;
+          const isGoal = (y===state.goal.y && x===state.goal.x);
+          const isStart= (y===state.start.y && x===state.start.x);
+          if (isGoal) continue; // 목표 칸에는 그리지 않음
+          const a = bestAction(y,x);
+          const cx = x*cs + cs/2, cy = y*cs + cs/2;
+          const len = cs*0.25;
+          ctx.beginPath();
+          switch(a){
+            case 0: // up
+              ctx.moveTo(cx, cy-len);
+              ctx.lineTo(cx, cy+len*0.4);
+              arrowHead(cx, cy-len, 0);
+              break;
+            case 1: // down
+              ctx.moveTo(cx, cy-len*0.4);
+              ctx.lineTo(cx, cy+len);
+              arrowHead(cx, cy+len, Math.PI);
+              break;
+            case 2: // left
+              ctx.moveTo(cx-len, cy);
+              ctx.lineTo(cx+len*0.4, cy);
+              arrowHead(cx-len, cy, Math.PI/2);
+              break;
+            case 3: // right
+              ctx.moveTo(cx-len*0.4, cy);
+              ctx.lineTo(cx+len, cy);
+              arrowHead(cx+len, cy, -Math.PI/2);
+              break;
+          }
+          ctx.stroke();
+        }
+      }
+      function arrowHead(x,y,rot){
+        ctx.save();
+        ctx.translate(x,y); ctx.rotate(rot);
+        ctx.beginPath();
+        ctx.moveTo(0,0); ctx.lineTo(-5,-4); ctx.lineTo(-5,4); ctx.closePath();
+        ctx.fillStyle = '#cbd5e1'; ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    function drawQHeatmap(){
+      const cs = state.cell;
+      // 전체 Q의 min/max
+      let qMin = Infinity, qMax = -Infinity;
+      for (let i=0;i<state.Q.length;i++){
+        const v = state.Q[i];
+        if (v<qMin) qMin=v; if (v>qMax) qMax=v;
+      }
+      const span = (qMax-qMin) || 1;
+
+      for (let y=0;y<state.H;y++){
+        for (let x=0;x<state.W;x++){
+          if (isWall(y,x)) continue;
+          const baseX = x*cs, baseY = y*cs;
+          const qUp = state.Q[idx(y,x,0)];
+          const qDn = state.Q[idx(y,x,1)];
+          const qLf = state.Q[idx(y,x,2)];
+          const qRt = state.Q[idx(y,x,3)];
+          // 상 삼각형
+          tri(baseX, baseY, baseX+cs, baseY, baseX+cs/2, baseY+cs/2, qUp);
+          // 하
+          tri(baseX, baseY+cs, baseX+cs, baseY+cs, baseX+cs/2, baseY+cs/2, qDn);
+          // 좌
+          tri(baseX, baseY, baseX, baseY+cs, baseX+cs/2, baseY+cs/2, qLf);
+          // 우
+          tri(baseX+cs, baseY, baseX+cs, baseY+cs, baseX+cs/2, baseY+cs/2, qRt);
+        }
+      }
+
+      function tri(x1,y1,x2,y2,x3,y3,q){
+        const t = (q - qMin) / span; // 0..1
+        const col = heat(t);
+        ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.lineTo(x3,y3); ctx.closePath();
+        ctx.fillStyle = col; ctx.fill();
+      }
+      function heat(t){
+        // 퍼셉추얼-ish 블루→시안→초록→노랑→주황
+        const h = 220 - 220*t; // 220..0
+        const s = 85; const l = 45 + 20*t; // 살짝 밝아짐
+        return `hsl(${h} ${s}% ${l}%)`;
+      }
+    }
+
+    function draw(){ drawGrid(); updateStats(); }
+
+    function updateStats(){
+      el('stats').innerHTML = `
+        에피소드: <b>${state.ep}</b><br>
+        ε: <b>${state.eps.toFixed(3)}</b> &nbsp; α: <b>${state.alpha.toFixed(2)}</b> &nbsp; γ: <b>${state.gamma.toFixed(2)}</b><br>
+        마지막 에피소드 길이: <b>${state.lastEpisodeSteps}</b> &nbsp; 평균 길이(최근 ${state.runningAvgN}): <b>${state.avgLen.toFixed(1)}</b><br>
+        마지막 에피소드 총보상: <b>${state.epReturn.toFixed(1)}</b> &nbsp; 평균 총보상(최근 ${state.runningAvgN}): <b>${state.avgReturn.toFixed(2)}</b>
+      `;
+    }
+
+    // ====== 루프 ======
+    function loop(){
+      if (state.training){
+        const n = state.stepsPerFrame;
+        for (let i=0;i<n;i++) qLearnStep();
+        draw();
+      } else {
+        // 정지 중에도 그리드만 유지
+        draw();
+      }
+      requestAnimationFrame(loop);
+    }
+
+    // ====== UI 핸들러 ======
+    el('h').addEventListener('change', ()=> setGrid(parseInt(el('h').value,10), state.W));
+    el('w').addEventListener('change', ()=> setGrid(state.H, parseInt(el('w').value,10)));
+    el('cellSize').addEventListener('change', ()=> { state.cell = clamp(parseInt(el('cellSize').value,10), 12, 64); draw(); });
+
+    el('alpha').addEventListener('change', ()=> state.alpha = parseFloat(el('alpha').value));
+    el('gamma').addEventListener('change', ()=> state.gamma = parseFloat(el('gamma').value));
+    el('eps').addEventListener('change', ()=> state.eps = parseFloat(el('eps').value));
+    el('epsMin').addEventListener('change', ()=> state.epsMin = parseFloat(el('epsMin').value));
+    el('epsDecay').addEventListener('change', ()=> state.epsDecay = parseFloat(el('epsDecay').value));
+    el('stepCost').addEventListener('change', ()=> state.stepCost = parseFloat(el('stepCost').value));
+    el('goalReward').addEventListener('change', ()=> state.goalReward = parseFloat(el('goalReward').value));
+    el('maxSteps').addEventListener('change', ()=> state.maxSteps = parseInt(el('maxSteps').value,10));
+    el('speed').addEventListener('input', ()=> state.stepsPerFrame = parseInt(el('speed').value,10));
+
+    el('toggleTrain').addEventListener('click', ()=>{
+      state.training = !state.training;
+      el('toggleTrain').textContent = state.training ? '⏸ 일시정지' : '▶ 시작';
+    });
+
+    el('stepEpisode').addEventListener('click', ()=>{
+      // 한 에피소드만 진행 (학습 on/off와 무관)
+      const targetEp = state.ep + 1;
+      const maxIt = state.maxSteps + 5; // safeguard
+      let it=0;
+      while (state.ep < targetEp && it++ < maxIt) qLearnStep();
+      draw();
+    });
+
+    el('runGreedy').addEventListener('click', ()=>{
+      // 탐욕 정책으로 1회 시연 (학습 없이)
+      const savedTraining = state.training;
+      state.training = false;
+      const s0 = {y: state.start.y, x: state.start.x};
+      const path = [ {y:s0.y,x:s0.x} ];
+      let s = s0;
+      let steps = 0; const maxShow = state.maxSteps;
+      (function animate(){
+        draw();
+        // 경로 강조
+        const cs = state.cell; ctx.save();
+        ctx.globalAlpha = 0.25; ctx.fillStyle = '#fde68a';
+        for (const p of path){ ctx.fillRect(p.x*cs, p.y*cs, cs, cs); }
+        ctx.restore();
+
+        if (s.y === state.goal.y && s.x === state.goal.x) { state.training = savedTraining; return; }
+        if (steps++ > maxShow) { state.training = savedTraining; return; }
+        const a = bestAction(s.y, s.x);
+        const [ns] = stepEnv(s, a);
+        s = ns; path.push({y:s.y,x:s.x});
+        requestAnimationFrame(animate);
+      })();
+    });
+
+    el('resetQ').addEventListener('click', ()=>{ resetQ(); state.eps = parseFloat(el('eps').value); state.ep=0; state.avgReturn=0; state.avgLen=0; resetEpisode(); draw(); });
+
+    el('clearWalls').addEventListener('click', ()=>{ state.walls.clear(); draw(); });
+    el('randomWalls').addEventListener('click', ()=>{
+      // 시작/목표를 피해 랜덤 벽 생성
+      state.walls.clear();
+      const density = 0.18; // 기본 밀도
+      for (let y=0;y<state.H;y++){
+        for (let x=0;x<state.W;x++){
+          if ((y===state.start.y && x===state.start.x) || (y===state.goal.y && x===state.goal.x)) continue;
+          if (Math.random() < density) state.walls.add(key(y,x));
+        }
+      }
+      draw();
+    });
+
+    // 캔버스 편집
+    cv.addEventListener('contextmenu', e=> e.preventDefault());
+    cv.addEventListener('mousedown', onCanvasClick);
+
+    function onCanvasClick(e){
+      const rect = cv.getBoundingClientRect();
+      const x = Math.floor((e.clientX - rect.left) / state.cell);
+      const y = Math.floor((e.clientY - rect.top) / state.cell);
+      if (!inBounds(y,x)) return;
+
+      const modeSel = el('editMode').value;
+      const mode = (e.altKey ? 'goal' : e.shiftKey ? 'start' : modeSel);
+
+      if (mode === 'wall'){
+        const k = key(y,x);
+        // 시작/목표 칸은 벽 금지
+        if ((y===state.start.y && x===state.start.x) || (y===state.goal.y && x===state.goal.x)) return;
+        if (state.walls.has(k)) state.walls.delete(k); else state.walls.add(k);
+      } else if (mode === 'start'){
+        if (isWall(y,x) || (y===state.goal.y && x===state.goal.x)) return;
+        state.start = {y,x}; resetEpisode();
+      } else if (mode === 'goal'){
+        if (isWall(y,x) || (y===state.start.y && x===state.start.x)) return;
+        state.goal = {y,x};
+      }
+      draw();
+    }
+
+    // ====== 초기화 ======
+    function boot(){
+      // 기본 맵
+      setGrid(state.H, state.W);
+      state.goal = {y: state.H-1, x: state.W-1};
+      resetEpisode();
+      draw();
+      loop();
+    }
+
+    boot();
+  </script>
+</body>
+</html>
