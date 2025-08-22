@@ -16,7 +16,8 @@ class Renderer:
         #self.screen = pygame.display.set_mode((w, h + 80))
 
         # __init__ 에서 set_mode 교체
-        flags = pygame.SCALED | pygame.DOUBLEBUF
+        # flags = pygame.SCALED | pygame.DOUBLEBUF
+        flags = pygame.DOUBLEBUF | pygame.RESIZABLE
         try:
             self.screen = pygame.display.set_mode((w, h + 80), flags, vsync=1)
         except TypeError:
