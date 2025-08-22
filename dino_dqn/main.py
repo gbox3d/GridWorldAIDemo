@@ -104,16 +104,8 @@ def main():
         else:
             state = next_state
 
-        # HUD (drawn already via ren.render)
-        hud = (f"Mode:{mode}  Ep:{episode}  Steps:{agent.step_count}  ε:{agent.epsilon():.3f}\n"
-               f"Buffer:{buffer.size}/{buffer.capacity}  Return:{ep_return:.1f}")
-        # if SHOW_SCREEN:
-            
-            
-            
-        #     ren.blit_hud(hud, score=ep_return)
-            
-        #     pygame.display.flip()
+        
+        # pygame.display.flip()
 
     pygame.quit()
 
