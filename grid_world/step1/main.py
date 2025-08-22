@@ -48,6 +48,8 @@ def main():
     renderer = Renderer(env.rows, env.cols, cell_px=CELL_PX, fps=FPS)
 
     mode = MODE_HUMAN
+    human_act = -1 # human action
+
     episode = 0
     step_in_ep = 0
     ep_return = 0.0
@@ -79,6 +81,7 @@ def main():
                     running = False
                 elif event.key == pygame.K_F1:
                     mode = MODE_HUMAN
+                    human_act = -1
                 elif event.key == pygame.K_F2:
                     mode = MODE_TRAIN
                 elif event.key == pygame.K_F3:
@@ -92,20 +95,27 @@ def main():
                     TRAIN_STEPS_PER_FRAME = max(1, TRAIN_STEPS_PER_FRAME - 1)
                 elif event.key == pygame.K_EQUALS or event.key == pygame.K_PLUS or event.key == pygame.K_KP_PLUS:
                     TRAIN_STEPS_PER_FRAME += 1
-
                 #Human action (one step per keydown)
                 if mode == MODE_HUMAN and event.key in (pygame.K_UP, pygame.K_RIGHT, pygame.K_DOWN, pygame.K_LEFT):
                     act = {pygame.K_UP:0, pygame.K_RIGHT:1, pygame.K_DOWN:2, pygame.K_LEFT:3}[event.key]
-                    s_next, r, done, _ = env.step(act)
-                    ep_return += r
-                    step_in_ep += 1
-                    
-                    print(f"score = {ep_return:.1f} | action={act} | state={s_next} | reward={r:.1f} | done={done}")
+                    human_act = act
 
-                    if done:
-                        prev_Score = ep_return
-                        time.sleep(0.3)                        
-                        env.reset(); step_in_ep = 0; ep_return = 0.0
+        if mode == MODE_HUMAN:
+
+            if human_act == -1:  # no key input
+                continue
+
+            s_next, r, done, _ = env.step(human_act)
+            human_act = -1  # reset key input after processing
+            ep_return += r
+            step_in_ep += 1
+            
+            print(f"score = {ep_return:.1f} | action={act} | state={s_next} | reward={r:.1f} | done={done}")
+
+            if done:
+                prev_Score = ep_return
+                time.sleep(0.3)                        
+                env.reset(); step_in_ep = 0; ep_return = 0.0
         
 
         # AI TRAIN mode

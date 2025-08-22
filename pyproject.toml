@@ -10,5 +10,6 @@ dependencies = [
     "pygame>=2.6.1",
     "python-dotenv>=1.1.1",
     "simpleaudio>=1.0.4",
+    "torch>=2.8.0",
     "yt-dlp>=2025.8.20",
 ]

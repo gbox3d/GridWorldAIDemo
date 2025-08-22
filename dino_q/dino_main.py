@@ -30,6 +30,8 @@ def main():
     pygame.key.set_repeat(0)  # human: keydown 1회당 1동작만
 
     mode = MODE_HUMAN
+    human_action = 0  # 기본: 아무것도 안 함 (do-nothing)
+
     episode = 0
     step_in_ep = 0
     ep_return = 0.0
@@ -65,6 +67,7 @@ def main():
                 time.sleep(0.3)
                 env.episode_idx += 1
                 env.reset(); step_in_ep = 0; ep_return = 0.0
+
 
         # --- AI train ---
         if mode == MODE_TRAIN:
